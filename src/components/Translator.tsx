@@ -28,7 +28,7 @@ import { Badge } from './ui/badge';
 
 const languageMap = {
   en: 'English',
-  am: 'Amharic (አማርኛ)'
+  am: 'Amharic (\u12a0\u121b\u122d\u129b)'
 };
 
 export function Translator() {
@@ -40,7 +40,7 @@ export function Translator() {
   const [isPhoneticEnabled, setIsPhoneticEnabled] = useState(true);
   
   const { translate, isLoading } = useTranslation();
-  const { suggestions, transliterate, setSuggestions } = useAmharicTransliteration();
+  const { suggestions, transliterate, setSuggestions, processInput } = useAmharicTransliteration();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -88,34 +88,63 @@ export function Translator() {
   };
 
   const handleSourceChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setSourceText(value);
+    let value = e.target.value;
+    const cursorPosition = e.target.selectionStart || 0;
     
     if (sourceLang === 'am' && isPhoneticEnabled) {
-      const cursorPosition = e.target.selectionStart || 0;
+      // Live phonetic transliteration logic for additions
+      if (value.length > sourceText.length) {
+        const { text: newText, newCursor } = processInput(value, cursorPosition);
+        value = newText;
+        setSourceText(value);
+        
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.setSelectionRange(newCursor, newCursor);
+          }
+        }, 0);
+      } else {
+        setSourceText(value);
+      }
+
+      // Update suggestions based on the word currently being typed
       const textBeforeCursor = value.substring(0, cursorPosition);
-      const matches = textBeforeCursor.match(/([a-zA-Z]+)$/);
+      const matches = textBeforeCursor.match(/([\u1200-\u137Fa-zA-Z]+)$/);
       if (matches) {
         const currentWord = matches[1];
         transliterate(currentWord);
       } else {
         setSuggestions([]);
       }
+    } else {
+      setSourceText(value);
     }
   };
 
-  const selectSuggestion = (suggestion: string) => {
+  const selectSuggestion = (suggestion: string, suffix: string = '') => {
     if (!textareaRef.current) return;
     
     const cursorPosition = textareaRef.current.selectionStart || 0;
     const textBeforeCursor = sourceText.substring(0, cursorPosition);
     const textAfterCursor = sourceText.substring(cursorPosition);
     
-    const lastWordMatch = textBeforeCursor.match(/([a-zA-Z]+)$/);
-    if (!lastWordMatch) return;
+    const lastWordMatch = textBeforeCursor.match(/([\u1200-\u137Fa-zA-Z]+)$/);
+    if (!lastWordMatch) {
+      // If no word match found, just insert the suggestion at cursor
+      const newText = textBeforeCursor + suggestion + suffix + textAfterCursor;
+      setSourceText(newText);
+      const newPos = textBeforeCursor.length + suggestion.length + suffix.length;
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          textareaRef.current.setSelectionRange(newPos, newPos);
+        }
+      }, 0);
+      return;
+    }
     
     const lastWord = lastWordMatch[1];
-    const newTextBeforeCursor = textBeforeCursor.substring(0, textBeforeCursor.length - lastWord.length) + suggestion;
+    const newTextBeforeCursor = textBeforeCursor.substring(0, textBeforeCursor.length - lastWord.length) + suggestion + suffix;
     const newText = newTextBeforeCursor + textAfterCursor;
     
     setSourceText(newText);
@@ -134,19 +163,8 @@ export function Translator() {
     if (sourceLang === 'am' && isPhoneticEnabled && suggestions.length > 0) {
       if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        selectSuggestion(suggestions[0]);
         const char = e.key === ' ' ? ' ' : String.fromCharCode(10);
-        setSourceText(prev => {
-          const pos = textareaRef.current?.selectionStart || 0;
-          return prev.slice(0, pos) + char + prev.slice(pos);
-        });
-        
-        setTimeout(() => {
-          if (textareaRef.current) {
-            const pos = (textareaRef.current.selectionStart || 0) + 1;
-            textareaRef.current.setSelectionRange(pos, pos);
-          }
-        }, 0);
+        selectSuggestion(suggestions[0], char);
       }
     }
   };
