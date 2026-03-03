@@ -1,12 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { Languages, ArrowRightLeft, Copy, Volume2, History, Trash2, Github, Globe2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Languages, 
+  ArrowRightLeft, 
+  Copy, 
+  Volume2, 
+  History, 
+  Trash2, 
+  Globe2,
+  Keyboard,
+  Settings2,
+  CheckCircle2,
+  Info,
+  Sparkles,
+  RefreshCcw
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from './ui/button';
 import { Card, CardContent } from './ui/card';
 import { Textarea } from './ui/textarea';
+import { Switch } from './ui/switch';
+import { Label } from './ui/label';
 import { useTranslation } from '../hooks/useTranslation';
+import { useAmharicTransliteration } from '../hooks/useAmharicTransliteration';
 import { Language, HistoryItem } from '../types';
 import { toast } from 'sonner';
+import { Badge } from './ui/badge';
 
 const languageMap = {
   en: 'English',
@@ -19,7 +37,11 @@ export function Translator() {
   const [sourceLang, setSourceLang] = useState<Language>('en');
   const [targetLang, setTargetLang] = useState<Language>('am');
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isPhoneticEnabled, setIsPhoneticEnabled] = useState(true);
+  
   const { translate, isLoading } = useTranslation();
+  const { suggestions, transliterate, setSuggestions } = useAmharicTransliteration();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem('translation_history');
@@ -30,17 +52,14 @@ export function Translator() {
 
   const handleTranslate = async () => {
     if (!sourceText.trim()) return;
-
     const result = await translate(sourceText, sourceLang, targetLang);
     if (result) {
       setTranslatedText(result.translatedText);
-      const newItem: HistoryItem = {
-        ...result,
-        id: crypto.randomUUID(),
-      };
+      const newItem: HistoryItem = { ...result, id: crypto.randomUUID() };
       const updatedHistory = [newItem, ...history].slice(0, 10);
       setHistory(updatedHistory);
       localStorage.setItem('translation_history', JSON.stringify(updatedHistory));
+      toast.success('Translated successfully');
     }
   };
 
@@ -68,174 +87,321 @@ export function Translator() {
     toast.info('History cleared');
   };
 
+  const handleSourceChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setSourceText(value);
+    
+    if (sourceLang === 'am' && isPhoneticEnabled) {
+      const cursorPosition = e.target.selectionStart || 0;
+      const textBeforeCursor = value.substring(0, cursorPosition);
+      const matches = textBeforeCursor.match(/([a-zA-Z]+)$/);
+      if (matches) {
+        const currentWord = matches[1];
+        transliterate(currentWord);
+      } else {
+        setSuggestions([]);
+      }
+    }
+  };
+
+  const selectSuggestion = (suggestion: string) => {
+    if (!textareaRef.current) return;
+    
+    const cursorPosition = textareaRef.current.selectionStart || 0;
+    const textBeforeCursor = sourceText.substring(0, cursorPosition);
+    const textAfterCursor = sourceText.substring(cursorPosition);
+    
+    const lastWordMatch = textBeforeCursor.match(/([a-zA-Z]+)$/);
+    if (!lastWordMatch) return;
+    
+    const lastWord = lastWordMatch[1];
+    const newTextBeforeCursor = textBeforeCursor.substring(0, textBeforeCursor.length - lastWord.length) + suggestion;
+    const newText = newTextBeforeCursor + textAfterCursor;
+    
+    setSourceText(newText);
+    setSuggestions([]);
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        const newPos = newTextBeforeCursor.length;
+        textareaRef.current.setSelectionRange(newPos, newPos);
+      }
+    }, 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (sourceLang === 'am' && isPhoneticEnabled && suggestions.length > 0) {
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        selectSuggestion(suggestions[0]);
+        const char = e.key === ' ' ? ' ' : String.fromCharCode(10);
+        setSourceText(prev => {
+          const pos = textareaRef.current?.selectionStart || 0;
+          return prev.slice(0, pos) + char + prev.slice(pos);
+        });
+        
+        setTimeout(() => {
+          if (textareaRef.current) {
+            const pos = (textareaRef.current.selectionStart || 0) + 1;
+            textareaRef.current.setSelectionRange(pos, pos);
+          }
+        }, 0);
+      }
+    }
+  };
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 p-4 md:p-6 lg:p-8">
-      {/* Header section */}
-      <div className="text-center space-y-2 mb-10">
-        <motion.div 
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="inline-flex items-center justify-center p-3 bg-primary/10 rounded-full mb-4"
-        >
-          <Languages className="w-8 h-8 text-primary" />
-        </motion.div>
-        <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-indigo-600">
-          Linguist Amharic
-        </h1>
-        <p className="text-muted-foreground max-w-lg mx-auto">
-          Instant translation between English and Amharic with high accuracy and speed.
-        </p>
+    <div className="max-w-5xl mx-auto space-y-8 p-4 md:p-8">
+      <div className="relative rounded-3xl overflow-hidden mb-8 h-48 md:h-64 flex items-center justify-center">
+        <img 
+          src="https://storage.googleapis.com/dala-prod-public-storage/generated-images/e47d820f-8982-4b2d-bbd1-7e2dd867dbdd/linguist-background-a7df2afd-1772578672104.webp" 
+          alt="Linguist Background" 
+          className="absolute inset-0 w-full h-full object-cover opacity-90"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+        <div className="relative text-center space-y-3 px-4">
+          <motion.div 
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="flex items-center justify-center gap-2 text-white/90"
+          >
+            <Sparkles className="w-5 h-5 text-yellow-400" />
+            <span className="text-sm font-bold tracking-widest uppercase">Intelligent Translation</span>
+          </motion.div>
+          <motion.h1 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-4xl md:text-5xl font-black text-white tracking-tighter"
+          >
+            Linguist Amharic
+          </motion.h1>
+          <p className="text-white/80 text-sm md:text-base max-w-md font-medium">
+            Bridging cultures with Google-powered translation and intuitive phonetic typing.
+          </p>
+        </div>
       </div>
 
-      {/* Main Translation Interface */}
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
-        {/* Source Language Card */}
-        <Card className="shadow-lg border-primary/5 bg-white/50 backdrop-blur-sm">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                {languageMap[sourceLang]}
-              </span>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => handleSpeak(sourceText, sourceLang)}
-                disabled={!sourceText}
-              >
-                <Volume2 className="w-4 h-4" />
-              </Button>
-            </div>
-            <Textarea 
-              placeholder="Enter text here..."
-              className="min-h-[200px] border-none shadow-none focus-visible:ring-0 text-lg p-0 bg-transparent"
-              value={sourceText}
-              onChange={(e) => setSourceText(e.target.value)}
-            />
-            <div className="flex justify-end mt-4">
-               <span className="text-xs text-muted-foreground">{sourceText.length} characters</span>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-3 bg-white/90 backdrop-blur-md border border-slate-200/50 rounded-2xl shadow-sm">
+           <div className="flex items-center gap-3">
+             <div className="flex items-center gap-2 bg-slate-100/80 px-4 py-2 rounded-xl border border-slate-200">
+                <Globe2 className="w-4 h-4 text-primary" />
+                <span className="text-sm font-bold text-slate-700">{languageMap[sourceLang]}</span>
+             </div>
+             <Button variant="ghost" size="icon" onClick={handleSwap} className="rounded-full bg-slate-100 hover:bg-primary/10 hover:text-primary transition-all active:rotate-180 duration-500 h-10 w-10">
+               <RefreshCcw className="w-4 h-4" />
+             </Button>
+             <div className="flex items-center gap-2 bg-slate-100/80 px-4 py-2 rounded-xl border border-slate-200">
+                <span className="text-sm font-bold text-slate-700">{languageMap[targetLang]}</span>
+             </div>
+           </div>
 
-        {/* Swap Button */}
-        <div className="flex justify-center">
-          <Button 
-            variant="outline" 
-            size="icon" 
-            className="rounded-full h-12 w-12 shadow-md hover:rotate-180 transition-transform duration-300 bg-white"
-            onClick={handleSwap}
-          >
-            <ArrowRightLeft className="w-5 h-5" />
-          </Button>
+           {sourceLang === 'am' && (
+             <div className="flex items-center space-x-3 bg-indigo-50 px-4 py-2 rounded-xl border border-indigo-100">
+               <Keyboard className="w-4 h-4 text-indigo-600" />
+               <Label htmlFor="phonetic-mode" className="text-xs font-bold uppercase tracking-wider text-indigo-700">Google Typing</Label>
+               <Switch 
+                id="phonetic-mode" 
+                checked={isPhoneticEnabled} 
+                onCheckedChange={setIsPhoneticEnabled}
+                className="data-[state=checked]:bg-indigo-600"
+               />
+             </div>
+           )}
         </div>
 
-        {/* Target Language Card */}
-        <Card className="shadow-lg border-primary/5 bg-white/50 backdrop-blur-sm overflow-hidden relative">
-          {isLoading && (
-            <div className="absolute inset-0 bg-white/40 backdrop-blur-[2px] z-10 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
+        <AnimatePresence>
+          {sourceLang === 'am' && isPhoneticEnabled && suggestions.length > 0 && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }} 
+              animate={{ opacity: 1, height: 'auto' }} 
+              exit={{ opacity: 0, height: 0 }}
+              className="px-6 py-4 bg-white border border-indigo-100 rounded-2xl shadow-xl shadow-indigo-500/5 overflow-hidden"
+            >
+              <div className="flex flex-wrap gap-2 items-center">
+                <div className="flex items-center gap-2 mr-3 text-indigo-600">
+                  <Info className="w-4 h-4" />
+                  <span className="text-xs font-bold uppercase tracking-widest">Suggestions</span>
+                </div>
+                {suggestions.map((s, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => selectSuggestion(s)} 
+                    className="group relative px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-all shadow-sm active:scale-95"
+                  >
+                    {s} 
+                    <span className="ml-3 text-[9px] opacity-40 group-hover:opacity-100 font-mono">
+                      {idx === 0 ? 'SPACE' : idx + 1}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
           )}
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                {languageMap[targetLang]}
-              </span>
-              <div className="flex gap-1">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => handleSpeak(translatedText, targetLang)}
-                  disabled={!translatedText}
-                >
-                  <Volume2 className="w-4 h-4" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => handleCopy(translatedText)}
-                  disabled={!translatedText}
-                >
-                  <Copy className="w-4 h-4" />
+        </AnimatePresence>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="shadow-2xl shadow-slate-200/50 border-slate-200/50 bg-white/80 backdrop-blur-sm relative group">
+            {sourceLang === 'am' && isPhoneticEnabled && (
+              <div className="absolute top-4 right-4 z-10">
+                <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white border-none px-3 py-1 text-[10px] font-bold tracking-widest uppercase rounded-full">Phonetic active</Badge>
+              </div>
+            )}
+            <CardContent className="p-8">
+              <div className="flex items-center justify-between mb-6">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Input</span>
+                <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl bg-slate-50 text-slate-400 hover:text-primary transition-colors" onClick={() => handleSpeak(sourceText, sourceLang)} disabled={!sourceText}>
+                  <Volume2 className="w-5 h-5" />
                 </Button>
               </div>
-            </div>
-            <div className="min-h-[200px] text-lg">
-              {translatedText ? (
-                <p className="whitespace-pre-wrap">{translatedText}</p>
-              ) : (
-                <p className="text-muted-foreground italic">Translation will appear here...</p>
+              <Textarea 
+                ref={textareaRef}
+                placeholder={sourceLang === 'am' && isPhoneticEnabled ? "Type phonetically (e.g. 'selam')" : "Enter text here..."}
+                className="min-h-[250px] border-none shadow-none focus-visible:ring-0 text-xl md:text-2xl p-0 bg-transparent resize-none leading-relaxed placeholder:text-slate-300 font-medium"
+                value={sourceText} 
+                onChange={handleSourceChange} 
+                onKeyDown={handleKeyDown}
+              />
+              <div className="flex justify-between items-center mt-6 pt-6 border-t border-slate-100">
+                 <div className="flex gap-2">
+                   {sourceText && (
+                     <Button variant="ghost" size="sm" onClick={() => setSourceText('')} className="text-slate-400 hover:text-destructive text-xs font-bold">
+                       <Trash2 className="w-3.5 h-3.5 mr-2" /> Clear
+                     </Button>
+                   )}
+                 </div>
+                 <span className="text-[10px] font-mono font-bold text-slate-400">{sourceText.length} CHARACTERS</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-2xl shadow-slate-200/50 border-slate-200/50 bg-white/80 backdrop-blur-sm overflow-hidden relative group">
+            <AnimatePresence>
+              {isLoading && (
+                <motion.div 
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-white/80 backdrop-blur-[4px] z-20 flex items-center justify-center"
+                >
+                  <div className="flex flex-col items-center gap-4">
+                    <div className="relative">
+                      <div className="h-16 w-16 rounded-full border-4 border-slate-100 border-t-primary animate-spin" />
+                      <Languages className="absolute inset-0 m-auto h-6 w-6 text-primary animate-pulse" />
+                    </div>
+                    <span className="text-xs font-black text-primary uppercase tracking-[0.3em] animate-pulse">Processing</span>
+                  </div>
+                </motion.div>
               )}
-            </div>
-          </CardContent>
-        </Card>
+            </AnimatePresence>
+            <CardContent className="p-8 h-full">
+              <div className="flex items-center justify-between mb-6">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Translation</span>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl bg-slate-50 text-slate-400 hover:text-primary transition-colors" onClick={() => handleSpeak(translatedText, targetLang)} disabled={!translatedText}>
+                    <Volume2 className="w-5 h-5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-10 w-10 rounded-xl bg-slate-50 text-slate-400 hover:text-primary transition-colors" onClick={() => handleCopy(translatedText)} disabled={!translatedText}>
+                    <Copy className="w-5 h-5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="min-h-[250px] text-xl md:text-2xl font-semibold text-slate-800">
+                {translatedText ? (
+                  <motion.p initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="whitespace-pre-wrap leading-relaxed">
+                    {translatedText}
+                  </motion.p>
+                ) : (
+                  <p className="text-slate-300 italic flex items-center gap-3 mt-4">
+                    Translation will appear here...
+                  </p>
+                )}
+              </div>
+              {translatedText && (
+                <div className="flex justify-end items-center mt-6 pt-6 border-t border-slate-100">
+                  <div className="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span className="text-[9px] font-black uppercase tracking-widest">Verified by Google</span>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {/* Action Button */}
-      <div className="flex justify-center">
+      <div className="flex justify-center pt-4">
         <Button 
           size="lg" 
-          className="px-12 h-14 rounded-full text-lg font-semibold shadow-xl transition-all hover:scale-105"
-          onClick={handleTranslate}
+          className="px-12 h-16 rounded-2xl text-lg font-black shadow-2xl transition-all hover:scale-105 active:scale-95 bg-primary hover:bg-primary/90 text-white tracking-tight" 
+          onClick={handleTranslate} 
           disabled={isLoading || !sourceText.trim()}
         >
-          Translate Now
+          {isLoading ? (
+             <div className="flex items-center gap-3">
+               <RefreshCcw className="w-5 h-5 animate-spin" /> Translating...
+             </div>
+          ) : 'Translate Now'}
         </Button>
       </div>
 
-      {/* History Section */}
       {history.length > 0 && (
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="pt-10 border-t"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <History className="w-5 h-5" />
-              Recent History
-            </h2>
-            <Button variant="ghost" size="sm" onClick={clearHistory} className="text-muted-foreground hover:text-destructive">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Clear All
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="pt-16">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <History className="w-5 h-5 text-primary" />
+              </div>
+              <h2 className="text-2xl font-black tracking-tight">Recent Activity</h2>
+            </div>
+            <Button variant="ghost" size="sm" onClick={clearHistory} className="text-slate-400 hover:text-destructive font-bold text-xs uppercase tracking-widest">
+              <Trash2 className="w-4 h-4 mr-2" /> Clear All
             </Button>
           </div>
-
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
             <AnimatePresence mode="popLayout">
               {history.map((item) => (
-                <motion.div
-                  key={item.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                <motion.div 
+                  key={item.id} 
+                  layout 
+                  initial={{ opacity: 0, scale: 0.95 }} 
+                  animate={{ opacity: 1, scale: 1 }} 
                   exit={{ opacity: 0, scale: 0.95 }}
                 >
-                  <Card className="overflow-hidden hover:shadow-md transition-shadow group">
-                    <CardContent className="p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
-                        <div>
-                          <p className="text-xs font-semibold text-muted-foreground mb-1">{languageMap[item.sourceLang]}</p>
-                          <p className="text-sm line-clamp-2">{item.sourceText}</p>
-                        </div>
-                        <div className="hidden md:block">
-                           <Globe2 className="w-4 h-4 text-muted-foreground/40" />
-                        </div>
-                        <div className="flex items-center justify-between md:justify-start gap-4">
-                          <div className="flex-1">
-                            <p className="text-xs font-semibold text-muted-foreground mb-1">{languageMap[item.targetLang]}</p>
-                            <p className="text-sm font-medium line-clamp-2">{item.translatedText}</p>
+                  <Card 
+                    className="overflow-hidden hover:shadow-xl hover:border-primary/20 transition-all border-slate-200/50 group cursor-pointer active:scale-[0.99] bg-white/60 backdrop-blur-sm" 
+                    onClick={() => { 
+                      setSourceText(item.sourceText); 
+                      setTranslatedText(item.translatedText); 
+                      setSourceLang(item.sourceLang); 
+                      setTargetLang(item.targetLang); 
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between gap-6">
+                        <div className="flex-1 space-y-4">
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest bg-slate-50 border-slate-200">{languageMap[item.sourceLang]}</Badge>
+                            <ArrowRightLeft className="w-3 h-3 text-slate-300" />
+                            <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest bg-slate-50 border-slate-200">{languageMap[item.targetLang]}</Badge>
                           </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="space-y-1">
+                               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Original</p>
+                               <p className="text-sm font-semibold text-slate-600 line-clamp-2">{item.sourceText}</p>
+                            </div>
+                            <div className="space-y-1">
+                               <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Translation</p>
+                               <p className="text-sm font-bold text-slate-900 line-clamp-2">{item.translatedText}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <Button 
-                            variant="ghost" 
+                            variant="secondary" 
                             size="icon" 
-                            className="opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => {
-                              setSourceText(item.sourceText);
-                              setTranslatedText(item.translatedText);
-                              setSourceLang(item.sourceLang);
-                              setTargetLang(item.targetLang);
-                            }}
+                            className="h-10 w-10 rounded-xl opacity-0 group-hover:opacity-100 transition-all bg-slate-100 hover:bg-primary hover:text-white" 
+                            onClick={(e) => { e.stopPropagation(); handleCopy(item.translatedText); }}
                           >
                             <Copy className="w-4 h-4" />
                           </Button>
@@ -249,18 +415,6 @@ export function Translator() {
           </div>
         </motion.div>
       )}
-
-      {/* Footer */}
-      <footer className="pt-12 pb-6 text-center text-sm text-muted-foreground">
-        <div className="flex justify-center gap-6 mb-4">
-           <a href="#" className="hover:text-primary flex items-center gap-1">
-             <Github className="w-4 h-4" /> GitHub
-           </a>
-           <a href="#" className="hover:text-primary">Privacy Policy</a>
-           <a href="#" className="hover:text-primary">Terms of Service</a>
-        </div>
-        <p>© {new Date().getFullYear()} Linguist Amharic. Powered by Open Source Translation API.</p>
-      </footer>
     </div>
   );
 }
