@@ -1,20 +1,16 @@
 import React, { useState } from 'react';
 import { 
   Shield, 
-  LogIn, 
   Mail, 
   AlertCircle,
-  Chrome,
-  ArrowLeft,
-  Lock,
-  CheckCircle2
+  Chrome
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
-import { supabase } from '../lib/supabase';
+import { supabase, AUTH_REDIRECT_URL } from '../lib/supabase';
 import { toast } from 'sonner';
 
 export function AdminLogin() {
@@ -22,20 +18,24 @@ export function AdminLogin() {
   const [isLoading, setIsLoading] = useState(false);
   const [isEmailSent, setIsEmailSent] = useState(false);
 
-  const approvedAdmin = 'ygtw20@gmail.com';
-
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
+          // Explicitly set the redirect URL to the production domain
+          redirectTo: AUTH_REDIRECT_URL,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
         }
       });
       if (error) throw error;
     } catch (error: any) {
-      toast.error(error.message);
+      console.error('Google Login Error:', error);
+      toast.error(error.message || 'Failed to initialize Google login');
     } finally {
       setIsLoading(false);
     }
@@ -48,8 +48,9 @@ export function AdminLogin() {
       return;
     }
 
-    if (email.toLowerCase() !== approvedAdmin) {
-      toast.error('Unauthorized access: This area is reserved for the system administrator.');
+    // Only allow ygtw20@gmail.com for admin access
+    if (email.toLowerCase() !== 'ygtw20@gmail.com') {
+      toast.error('Access restricted to authorized administrators only.');
       return;
     }
 
@@ -58,12 +59,12 @@ export function AdminLogin() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          emailRedirectTo: window.location.origin,
+          emailRedirectTo: AUTH_REDIRECT_URL,
         },
       });
       if (error) throw error;
       setIsEmailSent(true);
-      toast.success('Security link dispatched. Please check your inbox.');
+      toast.success('Magic link sent! Check your email.');
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -72,61 +73,57 @@ export function AdminLogin() {
   };
 
   return (
-    <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 md:p-8">
+    <div className="min-h-[70vh] flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-lg"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md"
       >
-        <Card className="shadow-[0_20px_50px_rgba(0,0,0,0.1)] border-slate-200/60 overflow-hidden relative bg-white/80 backdrop-blur-xl rounded-[2rem]">
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary via-indigo-500 to-primary" />
-          
-          <CardHeader className="space-y-4 text-center pb-10 pt-12">
-            <div className="mx-auto bg-primary/10 w-20 h-20 rounded-3xl flex items-center justify-center mb-4 rotate-3 hover:rotate-0 transition-transform duration-300">
-              <Lock className="w-10 h-10 text-primary" />
+        <Card className="shadow-2xl border-primary/10 overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-full h-1 bg-primary" />
+          <CardHeader className="space-y-2 text-center pb-8">
+            <div className="mx-auto bg-primary/10 w-16 h-16 rounded-full flex items-center justify-center mb-2">
+              <Shield className="w-8 h-8 text-primary" />
             </div>
-            <div className="space-y-1">
-              <CardTitle className="text-3xl font-black tracking-tight text-slate-900">Administrator Hub</CardTitle>
-              <CardDescription className="text-slate-500 font-medium text-lg">
-                Secure authentication required for dashboard access.
-              </CardDescription>
-            </div>
+            <CardTitle className="text-2xl font-bold">Admin Access</CardTitle>
+            <CardDescription>
+              Please sign in with an authorized account to access the dashboard.
+            </CardDescription>
           </CardHeader>
-
-          <CardContent className="space-y-8 px-8 pb-12">
+          <CardContent className="space-y-6">
             {!isEmailSent ? (
               <>
                 <div className="space-y-4">
                   <Button 
                     variant="outline" 
-                    className="w-full h-14 gap-4 hover:bg-slate-50 border-slate-200 shadow-sm rounded-2xl text-slate-700 font-bold transition-all active:scale-95" 
+                    className="w-full h-12 gap-3 hover:bg-slate-50 border-slate-200 shadow-sm" 
                     onClick={handleGoogleLogin}
                     disabled={isLoading}
                   >
                     <Chrome className="w-5 h-5 text-[#4285F4]" />
-                    Authorize with Google
+                    Continue with Google
                   </Button>
                 </div>
 
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t border-slate-100"></span>
+                    <span className="w-full border-t border-slate-200"></span>
                   </div>
-                  <div className="relative flex justify-center text-[10px] font-black uppercase tracking-[0.2em]">
-                    <span className="bg-white px-4 text-slate-300">Secure Direct Login</span>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-white px-2 text-muted-foreground">Or secure login</span>
                   </div>
                 </div>
 
-                <form onSubmit={handleMagicLink} className="space-y-6">
-                  <div className="space-y-3">
-                    <Label htmlFor="email" className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Admin Email Address</Label>
+                <form onSubmit={handleMagicLink} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Admin Email</Label>
                     <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                      <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input 
                         id="email" 
                         type="email" 
                         placeholder="ygtw20@gmail.com" 
-                        className="pl-12 h-14 rounded-2xl border-slate-200 bg-slate-50/50 focus:bg-white transition-all text-base font-medium"
+                        className="pl-10 h-11"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -135,51 +132,36 @@ export function AdminLogin() {
                   </div>
                   <Button 
                     type="submit" 
-                    className="w-full h-14 shadow-2xl shadow-primary/30 rounded-2xl font-black text-lg transition-all hover:scale-[1.02] active:scale-95"
+                    className="w-full h-11 shadow-lg shadow-primary/20" 
                     disabled={isLoading}
                   >
-                    {isLoading ? "Processing..." : "Send Secure Link"}
+                    {isLoading ? "Sending..." : "Send Magic Link"}
                   </Button>
                 </form>
               </>
             ) : (
-              <div className="text-center space-y-8 py-4 animate-in fade-in zoom-in duration-500">
-                <div className="bg-green-50 p-8 rounded-[2rem] border border-green-100 flex flex-col items-center gap-4">
-                  <div className="h-16 w-16 bg-green-100 rounded-full flex items-center justify-center text-green-600">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="font-black text-green-900 text-xl">Dispatch Successful</p>
-                    <p className="text-sm text-green-700 font-medium">
-                      A verification link was sent to<br/>
-                      <span className="font-bold underline">{email}</span>
-                    </p>
-                  </div>
+              <div className="text-center py-4 space-y-4">
+                <div className="bg-green-50 p-4 rounded-xl flex items-center justify-center text-green-700">
+                  <Mail className="w-5 h-5 mr-2" />
+                  Email sent to {email}
                 </div>
-                
-                <div className="space-y-6">
-                  <p className="text-sm text-slate-500 font-medium italic">
-                    Please check your mailbox (including spam) and follow the instructions to continue.
-                  </p>
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => setIsEmailSent(false)} 
-                    className="text-primary font-bold hover:bg-primary/5 rounded-xl h-12"
-                  >
-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back to Login
-                  </Button>
-                </div>
+                <p className="text-sm text-muted-foreground italic">
+                  Check your inbox and click the link to sign in securely.
+                </p>
+                <Button variant="ghost" onClick={() => setIsEmailSent(false)} className="text-sm underline">
+                  Try another email
+                </Button>
               </div>
             )}
 
-            <div className="flex items-start gap-4 p-5 bg-slate-50 rounded-2xl border border-slate-100">
-              <div className="p-2 bg-slate-100 rounded-xl">
-                <Shield className="w-4 h-4 text-slate-500" />
-              </div>
+            <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5" />
               <div className="space-y-1">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-800">Internal Security Policy</p>
-                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-                  Access is restricted to authorized personnel. Session activity and geolocation data are logged for security audits.
+                <p className="text-[11px] text-amber-700 leading-relaxed font-bold">
+                  Troubleshooting Google Login:
+                </p>
+                <p className="text-[10px] text-amber-600 leading-relaxed">
+                  Ensure Redirect URLs in Supabase include {AUTH_REDIRECT_URL}.
                 </p>
               </div>
             </div>
